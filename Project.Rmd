@@ -1,0 +1,132 @@
+---
+title: "Project - Motion Classification"
+author: "Luo Meiyu"
+date: "10, Jan, 2016"
+output: html_document
+---
+
+##Synopsis
+The goal of this motion classification project is to predict types of motions based on the dataset provided by  http://groupware.les.inf.puc-rio.br/har . The training set data is collected in an experiment where 4 users conducted 5 kinds of motions. In this project, I adopt the k-Nearest-Neighbor model with PCA dimension reduction, comparing with one layer neural network and random forest. The prediction accuracy is 98% on training set and 95% on test set. 
+
+##Data Preprocessing
+
+###1. Predictor Selection
+
+```{r}
+##Reading in data
+setwd('E:/Coursera/R programming/Practical Machine Learning')
+trainset<-read.csv('pml-training.csv',na.strings = c("NA","#DIV/0!"))
+testset<-read.csv('pml-testing.csv',na.strings = c("NA","#DIV/0!"))
+```
+
+(1) Non-motion predictors are first abandoned, including the sequential id, user name, timestamp and its components, and window counts. These predictors are dropped as they are unrelated to the physical features of motions.
+
+```{r}
+library(caret)
+trainset<-trainset[,7:(dim(trainset)[2])]
+testset<-testset[,7:(dim(trainset)[2]+6)]
+```
+
+(2) Constant predictors are abandoned. Experimental data are collected by electronic devices, which might collect constant noise because of environmental background or device features. These predictors are dropped as they are unrelated to the physical features of motions.
+
+```{r}
+nzvindex<-nzv(trainset)
+trainset<-trainset[,-nzvindex]
+testset<-testset[,-nzvindex]
+```
+
+(3) Empty values are imputed by column means.
+
+```{r}
+trainmeanvector<-colMeans(trainset[1:(dim(trainset)[2]-1)],na.rm = TRUE)
+
+for (i in 1:(dim(trainset)[2]-1)){
+  trainset[is.na(trainset[,i]),i]<-trainmeanvector[i]
+  testset[is.na(testset[,i]),i]<-trainmeanvector[i]
+  
+}
+```
+
+(4) Preditor dimension is reduced by principal component analysis and then scaled. In the process, I find that scaling the principal componet can improve prediction accuracy by 5%.
+
+```{r}
+preproc<-preProcess(trainset,method="pca")
+prtrain<-predict(preproc,trainset)
+prtest<-predict(preproc,testset)
+
+preproc<-preProcess(prtrain,method="scale")
+prtrain<-predict(preproc,prtrain)
+prtest<-predict(preproc,prtest)
+```
+
+##Models
+
+###1. Model Selection
+
+As the project goal is to classify detected motions, classification models of neural network, random forest and k-nearest neighbours are experimented.
+
+With a one layer neural network, the prediction accuracy is around 64%. Neural network with higher layers will undoubtedly improve prediction accuracy with increased computational costs.
+
+```{r}
+##Release this command if you hope to run the neural network regression. It's hidden as it takes a long time to run and is not the final model selected.
+
+##model_nnet<-train(classe~.,method='nnet',data=prtrain,trControl=trainControl(method="cv",number=10),maxit=200,verbose=TRUE)
+
+```
+
+Random forests yields a prediction accuracy of 100%, but really takes a long time to run.
+
+```{r}
+
+##Release this command if you hope to run the random forest model. It's hidden as it takes a long time to run and is not the final model selected.
+
+##model_rf<-train(classe~.,method='rf',data=prtrain,trControl=trainControl(method="cv",number=10))
+
+```
+
+K-nearest neighbour is much more computationally effective and yields a 98% prediction accuracy. Thus K-nearest neighbour is adopted.
+
+```{r}
+
+##Final model
+model_knn<-train(classe~.,method='knn',data=prtrain,trControl=trainControl(method="cv",number=10))
+
+predict_train<-predict(model_knn,prtrain)
+confusionMatrix(predict_train,prtrain$classe)
+```
+
+Model prediction on test set:
+
+```{r}
+predict_test<-predict(model_knn,prtest)
+
+print(predict_test)
+
+```
+
+###2. Model Optimization
+
+(1) Cross Validation
+
+The out of sample error is estimated and minimized by cross validation process built in the train() of library(caret). The cross validation parameter is optimized by trying different number of folds.
+
+As the number of folds increases, the prediction accuracy improves while the runtime increases. Ideally, the "leave-one-out" method should by most effective, but obviously it's not efficient. Balancing the runtime and the accuracy, a fold number of 10 is selected.
+
+```{r}
+
+##Release these commands if you hope to verify the effect of optimization. It's hidden as it takes a long time to run and is not the final model selected.
+
+##model_1<-train(classe~.,method='knn',data=prtrain,trControl=trainControl(method="cv",number=3))
+
+##model_2<-train(classe~.,method='knn',data=prtrain,trControl=trainControl(method="cv",number=5))
+
+##model_3<-train(classe~.,method='knn',data=prtrain,trControl=trainControl(method="cv",number=10))
+
+```
+
+(2) Number of neighbors
+Number of neighbors used in the model is automatically optimized by the train() function. Obviously the prediction accuracy increases as the number of neighors decreases.
+
+```{r}
+plot(model_knn)
+```
